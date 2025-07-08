@@ -1,0 +1,38 @@
+
+services:
+
+  dev-backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+      target: dev
+    env_file:
+      - ../env/backend/.env.backend.development
+    volumes:
+      - ../../backend:/app
+    command: noom run dev
+
+  dev-admin-web:
+    build:
+      context: ../../admin-web
+      dockerfile: Dockerfile
+      target: dev
+    volumes:
+      - ../../admin-web:/app
+    env_file:
+      - ../env/admin-web/.env.admin-web.development
+    command: npm run dev
+
+  dev-pub-web:
+    build:
+      context: ../../pub-web
+      dockerfile: Dockerfile
+      target: dev
+    volumes: 
+      - ../../pub-web:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+    env_file: 
+      - ../env/pub-web/.env.pub-web.development
+    command: npm run dev

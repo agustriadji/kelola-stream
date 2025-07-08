@@ -1,0 +1,146 @@
+services:
+  db-postgres:
+    image: postgres:15
+    container_name: db-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - ./db/postgresql/data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - dev-network
+    profiles:
+      - db-postgres
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 10s
+      retries: 5
+
+  dev-livekit:
+    image: livekit/livekit-server:latest
+    container_name: livekit-server
+    ports:
+      - "7880:7880" # HTTP API
+      - "7881:7881" # Websocket (ingest/egress)
+      - "5349:5349/udp" # TURN server
+    environment:
+      - LIVEKIT_KEYS=2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824:hello
+      - LIVEKIT_REDIS_HOST=redis
+      - LIVEKIT_CONFIG_FILE=/etc/livekit.yaml
+    volumes:
+      - ./livekit/livekit.yaml:/etc/livekit.yaml
+    networks:
+      - dev-network
+    depends_on:
+      - redis
+    restart: unless-stopped
+    profiles:
+      - dev-livekit
+
+  dev-backend:
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
+    container_name: dev-backend
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./backend:/code
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    depends_on:
+      - db-postgres
+      - dev-livekit
+    networks:
+      - dev-network
+    profiles:
+      - dev-backend
+
+  dev-admin-web:
+    build: ./admin-web
+    container_name: dev-admin-web
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./dev-admin-web:/app
+    environment:
+      - PORT=3000
+    command: npm run dev
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    depends_on:
+      - db-postgres
+      - dev-livekit
+      - dev-backend
+    networks:
+      - dev-network
+    profiles:
+      - dev-admin-web
+
+  dev-pub-web:
+    build: ./pub-web
+    container_name: dev-pub-web
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./pub-web:/app
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+    command: npm run start
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    # depends_on:
+    #   - db-postgres
+    #   - dev-livekit
+    #   - dev-backend
+    networks:
+      - dev-network
+    profiles:
+      - dev-pub-web
+
+  db-mongodb:
+    image: mongo5.0
+    container_name: db-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./db/mongodb:/data/db
+    profiles:
+      - db-mongodb
+    networks:
+      - dev-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:alpine
+    container_name: dev-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - dev-network
+    profiles:
+      - dev-redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: ["redis-server", "--appendonly", "yes"]
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  dev-network:
+    driver: bridge

@@ -1,0 +1,183 @@
+
+services:
+
+  db-postgres:
+    image: postgres:15
+    container_name: db-postgres
+    volumes: postgres-data:/container/path
+    ports:
+      - "5432:5432"
+    env_file: ~./env/postgres/.env.postgres.staging
+    networks:
+      - dev-network
+    profiles:
+      - db-postgres
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "postgres" ]
+      interval: 10s
+      retries: 5
+
+  dev-livekit:
+    image: livekit/livekit-server:latest
+    container_name: livekit-server
+    ports:
+      - "7880:7880"  # HTTP API
+      - "7881:7881"  # Websocket (ingest/egress)
+      - "5349:5349/udp"  # TURN server
+    environment:
+      - LIVEKIT_KEYS=2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824:hello
+      - LIVEKIT_REDIS_HOST=redis
+      - LIVEKIT_CONFIG_FILE=/etc/livekit.yaml
+    env_file: ~./env/livekit/.env.livekit.staging
+    volumes: livekit-volume:/container/path
+    networks:
+      - dev-network
+    depends_on:
+      - redis
+    restart: unless-stopped    
+    profiles:
+      - dev-livekit
+
+  dev-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: dev-backend
+    ports:
+      - "8080:8080"
+    env_file: ~./env/backend/.env.backend.staging
+    volumes: backend-volume:/container/path
+    stdin_open: true 
+    tty: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["executable", "arg"]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      - db-postgres
+      - dev-livekit
+    networks:
+      - dev-network
+    profiles:
+      - dev-backend
+
+  dev-admin-web:
+    build:
+      context: ./admin-web
+      dockerfile: Dockerfile.staging
+    container_name: dev-admin-web
+    ports:
+      - "3000:3000"
+    volumes: admin-web-volume:/container/path
+    environment:
+      - PORT=3000
+    env_file: ~./env/admin-web/.env.admin-web.staging
+    command: npm run dev
+    stdin_open: true 
+    tty: true
+    restart: unless-stopped
+    depends_on:
+      - db-postgres
+      - dev-livekit
+      - dev-backend
+    networks:
+      - dev-network
+    profiles:
+      - dev-admin-web
+
+  dev-pub-web:
+    build:
+      context: ./pub-web
+      dockerfile: Dockerfile.staging
+    container_name: dev-pub-web
+    ports:
+      - "3001:3001"
+    volumes: pub-web-volume:/container/path
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+    env_file: ~./env/pub-web/.env.pub-web.staging
+    command: npm run start
+    stdin_open: true 
+    tty: true
+    restart: unless-stopped
+    # depends_on:
+    #   - db-postgres
+    #   - dev-livekit
+    #   - dev-backend
+    networks:
+      - dev-network
+    profiles:
+      - dev-pub-web
+
+  db-mongodb:
+    image: mongo5.0
+    container_name: db-mongodb
+    ports:
+      - "27017:27017"
+    volumes: mongodb-data:/container/path
+    env_file: ~./env/mongodb/.env.mongodb.staging
+    profiles:
+      - db-mongodb
+    networks:
+      - dev-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:alpine
+    container_name: dev-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - dev-network
+    profiles:
+      - dev-redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: [ "redis-server", "--appendonly", "yes" ]
+
+volumes:
+  admin-web-volume:
+    driver: ./admin-web:/app
+    external: true
+    name: "admin-web-volume"
+  
+  pub-web-volume:
+    driver: ./pub-web:/app
+    external: true
+    name: "pub-web-volume"
+
+  backend-volume:
+    driver: ./backend:/app
+    external: true
+    name: "backend-volume"
+
+  livekit-volume:
+    driver: ./livekit/livekit.yaml:/etc/livekit.yaml
+    external: true
+    name: "livekit-vol"
+
+  postgres-data:
+    driver: ./db/postgresql/data:/var/lib/postgresql/data
+    external: true
+    name: "postgres-data"
+
+  mongodb-data: 
+    driver: ./db/mongodb:/data/db
+    external: true
+    name: "postgres-data"
+
+  redis-data:
+    driver: local  
+
+networks:
+  dev-network:
+    driver: bridge

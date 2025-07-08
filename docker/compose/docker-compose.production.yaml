@@ -1,0 +1,28 @@
+
+services:
+  dev-backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+      target: prod
+    env_file:
+      - ../env/backend/.env.backend.production
+    command: npm run start
+
+  dev-admin-web:
+    build:
+      context: ../../admin-web
+      dockerfile: Dockerfile
+      target: prod
+    env_file:
+      - ../env/admin-web/.env.admin-web.production
+    command: npm run start
+
+  dev-pub-web:
+    build:
+      context: ../../pub-web
+      dockerfile: Dockerfile
+      target: prod
+    env_file: 
+      - ../env/pub-web/.env.pub-web.production
+    command: npm run start
